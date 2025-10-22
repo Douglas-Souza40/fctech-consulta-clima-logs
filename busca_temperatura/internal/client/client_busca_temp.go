@@ -1,35 +1,45 @@
 package client
 
 import (
+    "context"
     "encoding/json"
     "errors"
     "fmt"
-    "github.com/Douglas-Souza40/fctech-consulta-clima-log/busca_temperatura/internal/handler/handler_error"
-    "github.com/Douglas-Souza40/fctech-consulta-clima-log/busca_temperatura/internal/model"
     "net/http"
     "net/url"
     "os"
+
+    "github.com/Douglas-Souza40/fctech-consulta-clima-log/busca_temperatura/internal/handler/handler_error"
+    "github.com/Douglas-Souza40/fctech-consulta-clima-log/busca_temperatura/internal/model"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
 )
 
 type ClientInterface interface {
-    GetTemperatureByCity(string) (float64, error)
-    GetLocationByCEP(string) (*model.Location, error)
+    GetTemperatureByCity(ctx context.Context, city string) (float64, error)
+    GetLocationByCEP(ctx context.Context, cep string) (*model.Location, error)
 }
 
 type Client struct {
-    HTTPGet func(string) (*http.Response, error)
+    HttpClient *http.Client
 }
 
 func NewClient() *Client {
     return &Client{
-        HTTPGet: http.Get,
+        HttpClient: &http.Client{},
     }
 }
 
 var _ ClientInterface = (*Client)(nil)
 
-func (c *Client) GetLocationByCEP(cep string) (*model.Location, error) {
-    resp, err := c.HTTPGet(fmt.Sprintf("https://viacep.com.br/ws/%s/json/", cep))
+func (c *Client) GetLocationByCEP(ctx context.Context, cep string) (*model.Location, error) {
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://viacep.com.br/ws/%s/json/", cep), nil)
+    if err != nil {
+        return nil, err
+    }
+    // propagate trace context
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+    resp, err := c.HttpClient.Do(req)
     if err != nil {
         return nil, err
     }
@@ -45,14 +55,20 @@ func (c *Client) GetLocationByCEP(cep string) (*model.Location, error) {
     return &model.Location{City: data.Localidade}, nil
 }
 
-func (c *Client) GetTemperatureByCity(city string) (float64, error) {
+func (c *Client) GetTemperatureByCity(ctx context.Context, city string) (float64, error) {
     apiKey := os.Getenv("WEATHER_API_KEY")
     if apiKey == "" {
         return 0, errors.New("weather api key not set")
     }
     cityEscaped := url.QueryEscape(city)
     url := fmt.Sprintf("https://api.weatherapi.com/v1/current.json?key=%s&q=%s", apiKey, cityEscaped)
-    resp, err := c.HTTPGet(url)
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return 0, err
+    }
+    // propagate trace context
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+    resp, err := c.HttpClient.Do(req)
     if err != nil {
         return 0, err
     }

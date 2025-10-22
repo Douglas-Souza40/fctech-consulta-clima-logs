@@ -1,34 +1,44 @@
 package client
 
 import (
+    "context"
     "encoding/json"
     "fmt"
+    "net/http"
+
     "github.com/Douglas-Souza40/fctech-consulta-clima-log/processa_cep/internal/handler/handler_error"
     "github.com/Douglas-Souza40/fctech-consulta-clima-log/processa_cep/internal/model"
-    "net/http"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
 )
 
 type ClientInterface interface {
-    GetLocationByCEP(string) (*model.Location, error)
-    GetTemperatureByCEP(string) (*model.TemperatureResponse, error)
+    GetLocationByCEP(ctx context.Context, cep string) (*model.Location, error)
+    GetTemperatureByCEP(ctx context.Context, cep string) (*model.TemperatureResponse, error)
 }
 
 type Client struct {
-    HTTPGet func(string) (*http.Response, error)
-    APIBURL string
+    HttpClient *http.Client
+    APIBURL    string
 }
 
 func NewClient(apiBURL string) *Client {
     return &Client{
-        HTTPGet: http.Get,
-        APIBURL: apiBURL,
+        HttpClient: &http.Client{},
+        APIBURL:    apiBURL,
     }
 }
 
 var _ ClientInterface = (*Client)(nil)
 
-func (c *Client) GetLocationByCEP(cep string) (*model.Location, error) {
-    resp, err := c.HTTPGet(fmt.Sprintf("https://viacep.com.br/ws/%s/json/", cep))
+func (c *Client) GetLocationByCEP(ctx context.Context, cep string) (*model.Location, error) {
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://viacep.com.br/ws/%s/json/", cep), nil)
+    if err != nil {
+        return nil, err
+    }
+    // propagate trace context
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+    resp, err := c.HttpClient.Do(req)
     if err != nil {
         return nil, err
     }
@@ -44,9 +54,15 @@ func (c *Client) GetLocationByCEP(cep string) (*model.Location, error) {
     return &model.Location{City: data.Localidade}, nil
 }
 
-func (c *Client) GetTemperatureByCEP(cep string) (*model.TemperatureResponse, error) {
+func (c *Client) GetTemperatureByCEP(ctx context.Context, cep string) (*model.TemperatureResponse, error) {
     url := fmt.Sprintf("%s/temperatura?cep=%s", c.APIBURL, cep)
-    resp, err := c.HTTPGet(url)
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return nil, handler_error.ErrInternal
+    }
+    // propagate trace context
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+    resp, err := c.HttpClient.Do(req)
 
     if err != nil {
         return nil, handler_error.ErrInternal

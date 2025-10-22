@@ -10,6 +10,9 @@ import (
     "log"
     "net/http"
     "regexp"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
 )
 
 type WeatherHandlerBuscaTemp struct {
@@ -28,7 +31,18 @@ func (h *WeatherHandlerBuscaTemp) ServeHTTP(w http.ResponseWriter, r *http.Reque
         return
     }
 
-    location, err := h.Client.GetLocationByCEP(cep)
+    ctx := r.Context()
+    tracer := otel.Tracer("busca_temperatura")
+
+    // span for the viacep lookup
+    ctx, spanLocate := tracer.Start(ctx, "GetLocationByCEP")
+    spanLocate.SetAttributes(attribute.String("cep", cep))
+    location, err := h.Client.GetLocationByCEP(ctx, cep)
+    sc := spanLocate.SpanContext()
+    if err != nil {
+        log.Printf("Erro ao buscar CEP: %v trace_id=%s span_id=%s", err, sc.TraceID().String(), sc.SpanID().String())
+    }
+    spanLocate.End()
 
     if errors.Is(err, handler_error.ErrZipcodeNotFound) {
         log.Printf("CEP nao encontrado: %v", cep)
@@ -40,7 +54,15 @@ func (h *WeatherHandlerBuscaTemp) ServeHTTP(w http.ResponseWriter, r *http.Reque
         return
     }
 
-    tempC, err := h.Client.GetTemperatureByCity(location.City)
+    // span for the weatherapi lookup
+    ctx, spanWeather := tracer.Start(ctx, "GetTemperatureByCity")
+    spanWeather.SetAttributes(attribute.String("city", location.City))
+    tempC, err := h.Client.GetTemperatureByCity(ctx, location.City)
+    scw := spanWeather.SpanContext()
+    if err != nil {
+        log.Printf("Erro ao buscar temperatura: %v trace_id=%s span_id=%s", err, scw.TraceID().String(), scw.SpanID().String())
+    }
+    spanWeather.End()
     if err != nil {
         log.Printf("Erro ao buscar temperatura: %v", err)
         http.Error(w, handler_error.ErrInternal.Error(), http.StatusInternalServerError)

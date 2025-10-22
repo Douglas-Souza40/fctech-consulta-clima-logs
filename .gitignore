@@ -1,0 +1,24 @@
+# Ignora o arquivo de variáveis de ambiente
+.env
+
+# Binários do Go
+/bin/
+/build/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Diretórios de dependências
+vendor/
+
+# Arquivos de cache e temporários
+*.log
+*.tmp
+*.out
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db

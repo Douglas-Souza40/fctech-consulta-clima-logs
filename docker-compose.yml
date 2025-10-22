@@ -9,6 +9,7 @@ services:
       - "8081:8081"
     environment:
       - PORT=8081
+      - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
     env_file:
       - .env
     volumes:
@@ -25,6 +26,7 @@ services:
     environment:
       - PORT=8080
       - BUSCA_TEMP_URL=http://busca_temperatura:8081
+      - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
     env_file:
       - .env
     volumes:
@@ -32,3 +34,9 @@ services:
     working_dir: /app
     depends_on:
       - busca_temperatura
+
+  zipkin:
+    image: openzipkin/zipkin:2.23
+    container_name: zipkin
+    ports:
+      - "9411:9411"
