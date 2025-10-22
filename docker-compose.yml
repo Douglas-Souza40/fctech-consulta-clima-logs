@@ -1,0 +1,34 @@
+version: "3.9"
+services:
+  busca_temperatura:
+    build:
+      context: .
+      dockerfile: busca_temperatura/cmd/Dockerfile
+    container_name: busca_temperatura
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+    env_file:
+      - .env
+    volumes:
+      - ./:/app:ro
+    working_dir: /app
+
+  processa_cep:
+    build:
+      context: .
+      dockerfile: processa_cep/cmd/Dockerfile
+    container_name: processa_cep
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - BUSCA_TEMP_URL=http://busca_temperatura:8081
+    env_file:
+      - .env
+    volumes:
+      - ./:/app:ro
+    working_dir: /app
+    depends_on:
+      - busca_temperatura
